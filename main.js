@@ -1742,10 +1742,10 @@ document.getElementById('csv-file-input').addEventListener('change', e => {
 });
 
 // ─── SAMPLE DATA ────────────────────────────────
-async function loadSampleData() {
-  const url = 'https://raw.githubusercontent.com/doghair/staffing-model/main/employees_dummy_250.csv';
+async function loadSampleData(fileName) {
+  const url = `https://raw.githubusercontent.com/doghair/staffing-model/main/${fileName}`;
   try {
-    toast('Fetching 250 employee sample...', 'info');
+    toast(`Fetching ${fileName}...`, 'info');
     document.body.style.cursor = 'wait';
     const res = await fetch(url);
     if (!res.ok) throw new Error('Fetch failed');
@@ -1753,22 +1753,30 @@ async function loadSampleData() {
     const { employees: incoming, errors } = parseCSV(text);
     if (errors.length) errors.forEach(err => console.warn(err));
 
-    incoming.forEach(migrateEmployee);
-    State.employees = incoming;
-    State.original  = JSON.parse(JSON.stringify(incoming));
-    
-    // Also clear supabase if needed since we are overwriting
-    if (typeof supabase !== 'undefined' && supabase) {
-        // Delete all employees from supabase so we can insert the newly loaded ones
-       const { data } = await supabase.from('staffing_employees').select('id');
-       if (data && data.length > 0) {
-           await supabase.from('staffing_employees').delete().in('id', data.map(d=>d.id));
-       }
-    }
+    // If we already have employees, run the diff flow to highlight changes
+    if (State.employees.length > 0) {
+      const diff = diffCSV(incoming, State.employees);
+      closeModal();
+      openModalImportReview(diff, incoming);
+    } else {
+      incoming.forEach(migrateEmployee);
+      State.employees = incoming;
+      State.original  = JSON.parse(JSON.stringify(incoming));
+      
+      // Clear supabase and insert since we are overwriting
+      if (typeof supabase !== 'undefined' && supabase) {
+         // Delete all employees from supabase so we can insert the newly loaded ones
+         const { data } = await supabase.from('staffing_employees').select('id');
+         if (data && data.length > 0) {
+             await supabase.from('staffing_employees').delete().in('id', data.map(d=>d.id));
+         }
+         await supabase.from('staffing_employees').upsert(incoming);
+      }
 
-    saveOriginal();
-    renderAll();
-    toast(`Loaded ${incoming.length} dummy employees.`, 'success');
+      saveOriginal();
+      renderAll();
+      toast(`Loaded ${incoming.length} employees from sample.`, 'success');
+    }
   } catch (err) {
     console.error(err);
     toast('Failed to load sample from GitHub', 'error');
@@ -1828,7 +1836,12 @@ function toast(message, type = 'info') {
 }
 
 // ─── EVENT BINDINGS ──────────────────────────────
-document.getElementById('btn-sample').addEventListener('click', loadSampleData);
+document.getElementById('sample-dropdown').addEventListener('change', e => {
+  const file = e.target.value;
+  if (!file) return;
+  loadSampleData(file);
+  e.target.value = ''; // Reset selection
+});
 document.getElementById('btn-add-emp').addEventListener('click', openModalAddEmployee);
 document.getElementById('btn-export').addEventListener('click', exportCSV);
 
