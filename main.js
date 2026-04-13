@@ -1829,8 +1829,9 @@ document.getElementById('btn-clear-data')?.addEventListener('click', async () =>
   if (!confirm('Are you sure you want to delete ALL employees? This cannot be undone.')) return;
   const backup = [...State.employees];
   State.employees = [];
+  State.original = [];
   
-  if (supabase) {
+  if (typeof supabase !== 'undefined' && supabase) {
     const ids = backup.map(e => e.id);
     if (ids.length > 0) {
       const { error } = await supabase.from('staffing_employees').delete().in('id', ids);
@@ -1838,6 +1839,7 @@ document.getElementById('btn-clear-data')?.addEventListener('click', async () =>
     }
   } else {
     localStorage.removeItem('staffing_scenario_active');
+    localStorage.removeItem('staffing_original');
   }
   
   renderAll();
