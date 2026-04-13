@@ -1742,24 +1742,39 @@ document.getElementById('csv-file-input').addEventListener('change', e => {
 });
 
 // ─── SAMPLE DATA ────────────────────────────────
-function loadSampleData() {
-  const y = State.year;
-  const samples = [
-    { id: uuid(), name: 'Alex Johnson', position: 'Director of Operations', department: 'Operations', employeeType: 'salary', annualSalary: 130000, hourlyRate: 0, hoursPerWeek: 40, startDate: `${y}-01-01`, termDate: null, status: 'active', billRate: 0, utilizationRate: 0, notes: 'Full year active' },
-    { id: uuid(), name: 'Maria Chen', position: 'Senior Consultant', department: 'Consulting', employeeType: 'salary', annualSalary: 110000, hourlyRate: 0, hoursPerWeek: 40, startDate: `${y}-01-01`, termDate: null, status: 'active', billRate: 195, utilizationRate: 0.80, notes: '80% billable at $195/hr' },
-    { id: uuid(), name: 'Jordan Lee', position: 'Data Analyst', department: 'Analytics', employeeType: 'salary', annualSalary: 85000, hourlyRate: 0, hoursPerWeek: 40, startDate: `${y}-04-15`, termDate: null, status: 'active', billRate: 145, utilizationRate: 0.75, notes: 'Mid-year start, pro-rated April' },
-    { id: uuid(), name: 'Sam Rivera', position: 'Hourly Contractor', department: 'IT', employeeType: 'hourly', annualSalary: 0, hourlyRate: 65, hoursPerWeek: 32, startDate: `${y}-01-01`, termDate: `${y}-06-30`, status: 'termed', billRate: 120, utilizationRate: 1.0, notes: '32 hrs/wk, termed mid-year' },
-    { id: uuid(), name: 'Taylor Kim', position: 'Marketing Manager', department: 'Marketing', employeeType: 'salary', annualSalary: 92000, hourlyRate: 0, hoursPerWeek: 40, startDate: `${y}-01-01`, termDate: `${y}-09-15`, status: 'termed', billRate: 0, utilizationRate: 0, notes: 'Termed Sep 15 — pro-rated' },
-    { id: uuid(), name: 'Casey Patel', position: 'Junior Consultant', department: 'Consulting', employeeType: 'hourly', annualSalary: 0, hourlyRate: 42, hoursPerWeek: 40, startDate: `${y}-01-01`, termDate: null, status: 'active', billRate: 85, utilizationRate: 0.70, notes: '70% utilization' },
-    { id: uuid(), name: 'Morgan Walsh', position: 'VP Finance', department: 'Finance', employeeType: 'salary', annualSalary: 175000, hourlyRate: 0, hoursPerWeek: 40, startDate: `${y}-01-01`, termDate: null, status: 'active', billRate: 0, utilizationRate: 0, notes: 'Non-billable' },
-    { id: uuid(), name: 'Riley Nguyen', position: 'Planned Hire — Dev', department: 'Engineering', employeeType: 'salary', annualSalary: 105000, hourlyRate: 0, hoursPerWeek: 40, startDate: `${y}-07-01`, termDate: null, status: 'planned', billRate: 165, utilizationRate: 0.85, notes: 'Planned H2 hire' },
-  ];
+async function loadSampleData() {
+  const url = 'https://raw.githubusercontent.com/doghair/staffing-model/main/employees_dummy_250.csv';
+  try {
+    toast('Fetching 250 employee sample...', 'info');
+    document.body.style.cursor = 'wait';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Fetch failed');
+    const text = await res.text();
+    const { employees: incoming, errors } = parseCSV(text);
+    if (errors.length) errors.forEach(err => console.warn(err));
 
-  State.employees = samples;
-  State.original  = JSON.parse(JSON.stringify(samples));
-  saveOriginal();
-  renderAll();
-  toast('Sample data loaded — 8 employees across all scenarios.', 'success');
+    incoming.forEach(migrateEmployee);
+    State.employees = incoming;
+    State.original  = JSON.parse(JSON.stringify(incoming));
+    
+    // Also clear supabase if needed since we are overwriting
+    if (typeof supabase !== 'undefined' && supabase) {
+        // Delete all employees from supabase so we can insert the newly loaded ones
+       const { data } = await supabase.from('staffing_employees').select('id');
+       if (data && data.length > 0) {
+           await supabase.from('staffing_employees').delete().in('id', data.map(d=>d.id));
+       }
+    }
+
+    saveOriginal();
+    renderAll();
+    toast(`Loaded ${incoming.length} dummy employees.`, 'success');
+  } catch (err) {
+    console.error(err);
+    toast('Failed to load sample from GitHub', 'error');
+  } finally {
+    document.body.style.cursor = 'default';
+  }
 }
 
 // ─── EXPORT CSV ──────────────────────────────────
